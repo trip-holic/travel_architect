@@ -7,12 +7,16 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    #dns:
+    #  - 8.8.8.8
+    #  - 8.8.4.4
     volumes:
       - ./app:/workspace/app
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:njklkzm@db:5432/travel_db
       - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROG_API_KEY=${GROG_API_KEY}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:

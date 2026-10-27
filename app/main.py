@@ -1,12 +1,32 @@
 import os
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from openai import AsyncOpenAI
+import openai
+
+# 1. Настройка базового логирования (Observability)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Travel Architect")
 
-# Инициализируем клиента OpenAI (он сам найдет ключ OPENAI_API_KEY из .env)
-client = AsyncOpenAI()
+# Проверяем наличие ключа при старте, чтобы не узнать об этом только при запросе
+#api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GROG_API_KEY")
+if not api_key:
+    logger.error("КРИТИЧЕСКАЯ ОШИБКА: API_KEY не найден в окружении!")
+
+# Инициализируем клиента OpenAI с защитой от зависаний (Resilience)
+client = AsyncOpenAI(
+    api_key=api_key,
+    base_url="https://api.groq.com/openai/v1",
+    timeout=30.0,       # Ждем максимум 30 секунд
+    max_retries=2       # Автоматически делаем 2 повторные попытки при сетевых сбоях
+)
 
 # Описываем модель входящего запроса
 class TravelRequest(BaseModel):
@@ -21,10 +41,12 @@ async def root():
 @app.post("/api/v1/generate")
 async def generate_itinerary(req: TravelRequest):
     prompt = f"Создай концепт нестандартного путешествия. Место: {req.destination}. Дней: {req.days}. Фокус и настроение: {req.vibe}."
-    
+    logger.info(f"Начало обработки запроса для локации: {req.destination}")
+
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o-mini", # Используем быструю и недорогую модель для тестов
+            #model="gpt-4o-mini", # Используем быструю и недорогую модель для тестов
+            model="openai/gpt-oss-20b",
             messages=[
                 {
                     "role": "system", 
@@ -33,9 +55,17 @@ async def generate_itinerary(req: TravelRequest):
                 {"role": "user", "content": prompt}
             ]
         )
+        logger.info(f"Ответ от OpenAI успешно получен. Использовано токенов: {response.usage.total_tokens}")
         # Возвращаем текст, который сгенерировала нейросеть
         return {"concept": response.choices[0].message.content}
         
+# 3. Гранулярная обработка ошибок
+    except openai.APITimeoutError:
+        logger.error("Таймаут: OpenAI не ответил за 30 секунд.")
+        raise HTTPException(status_code=504, detail="Сервер ИИ перегружен и не ответил вовремя.")
+    except openai.APIConnectionError:
+        logger.error("Ошибка сети: Невозможно подключиться к OpenAI.")
+        raise HTTPException(status_code=502, detail="Сбой сети при обращении к ИИ-провайдеру.")
     except Exception as e:
-        # Если OpenAI недоступен или ключ неверный, выдаем ошибку
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Непредвиденная ошибка: {str(e)}")
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера генерации.")
