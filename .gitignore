@@ -1,0 +1,18 @@
+# Секреты и ключи
+.env
+.env.*
+
+# Кэш Python и виртуальные окружения
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+.pytest_cache/
+
+# Настройки среды разработки (Codespaces/VS Code)
+.vscode/
+
+# Системные файлы
+.DS_Store
+Thumbs.db

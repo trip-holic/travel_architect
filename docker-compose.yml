@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/workspace/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:njklkzm@db:5432/travel_db
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  #worker:
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
+    #volumes:
+    #  - ./app:/workspace/app
+    #environment:
+    #  - DATABASE_URL=postgresql+asyncpg://admin:secret@db:5432/travel_db
+    #  - REDIS_URL=redis://redis:6379/0
+    #  - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+    # Пример запуска воркера на базе легковесного ARQ (Redis)
+    #command: arq app.worker.tasks.WorkerSettings 
+    #depends_on:
+    #  - redis
+
+  db:
+    image: ankane/pgvector:latest # Образ PostgreSQL с готовым расширением pgvector
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=njklkzm
+      - POSTGRES_DB=travel_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d travel_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
